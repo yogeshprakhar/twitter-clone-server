@@ -19,6 +19,7 @@ const server_1 = require("@apollo/server");
 const express4_1 = require("@apollo/server/express4");
 const user_1 = require("./user");
 const cors_1 = __importDefault(require("cors"));
+const jwt_1 = __importDefault(require("../services/jwt"));
 function initServer() {
     return __awaiter(this, void 0, void 0, function* () {
         const app = (0, express_1.default)();
@@ -38,7 +39,15 @@ function initServer() {
             },
         });
         yield graphqlServer.start();
-        app.use("/graphql", (0, express4_1.expressMiddleware)(graphqlServer));
+        app.use("/graphql", (0, express4_1.expressMiddleware)(graphqlServer, {
+            context: ({ req, res }) => __awaiter(this, void 0, void 0, function* () {
+                return {
+                    user: req.headers.authorization
+                        ? jwt_1.default.decodeToken(req.headers.authorization.split('Bearer ')[1])
+                        : undefined,
+                };
+            }),
+        }));
         return app;
     });
 }
