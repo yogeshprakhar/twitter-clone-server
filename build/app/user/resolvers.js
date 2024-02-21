@@ -55,6 +55,11 @@ const queries = {
             return null;
         const user = yield db_1.prismaClient.user.findUnique({ where: { id } });
         return user;
-    })
+    }),
 };
-exports.resolvers = { queries };
+const extraResolvers = {
+    User: {
+        tweets: (parent) => db_1.prismaClient.tweet.findMany({ where: { author: { id: parent.id } } }),
+    },
+};
+exports.resolvers = { queries, extraResolvers };

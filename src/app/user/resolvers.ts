@@ -2,6 +2,7 @@ import axios from "axios";
 import { prismaClient } from "../../clients/db";
 import JWTService from "../../services/jwt";
 import { GraphqlContext } from "../../interface";
+import { User } from "@prisma/client";
 
 interface GoogleTokenResult {
   iss?: string;
@@ -41,15 +42,15 @@ const queries = {
       where: { email: data.email },
     });
 
-    console.log("let's check this",user?.email);
+    console.log("let's check this", user?.email);
 
     if (!user) {
       await prismaClient.user.create({
         data: {
           email: data.email,
-          firstName: data.given_name ,
-          lastName: data.family_name ,
-          profileImageURL: data.picture ,
+          firstName: data.given_name,
+          lastName: data.family_name,
+          profileImageURL: data.picture,
         },
       });
     }
@@ -58,22 +59,29 @@ const queries = {
       where: { email: data.email },
     });
 
-    if(!userIndb) throw new Error("User with email not found")
+    if (!userIndb) throw new Error("User with email not found");
 
-    const userToken = JWTService.generateTokenForUser(userIndb)
+    const userToken = JWTService.generateTokenForUser(userIndb);
 
     return userToken;
     // return "ok";
   },
-  
-  getCurrentUser: async(parent:any, args:any, ctx:GraphqlContext) => {
+
+  getCurrentUser: async (parent: any, args: any, ctx: GraphqlContext) => {
     // console.log(ctx)
-    const id = ctx.user?.id
-    if(!id) return null
-    
-    const user = await prismaClient.user.findUnique({where : {id}})
+    const id = ctx.user?.id;
+    if (!id) return null;
+
+    const user = await prismaClient.user.findUnique({ where: { id } });
     return user;
-  }
+  },
 };
 
-export const resolvers = { queries };
+const extraResolvers = {
+  User: {
+    tweets: (parent: User) =>
+      prismaClient.tweet.findMany({ where: { author: { id: parent.id } } }),
+  },
+};
+
+export const resolvers = { queries, extraResolvers };

@@ -18,6 +18,7 @@ const body_parser_1 = __importDefault(require("body-parser"));
 const server_1 = require("@apollo/server");
 const express4_1 = require("@apollo/server/express4");
 const user_1 = require("./user");
+const tweet_1 = require("./tweet");
 const cors_1 = __importDefault(require("cors"));
 const jwt_1 = __importDefault(require("../services/jwt"));
 function initServer() {
@@ -28,22 +29,26 @@ function initServer() {
         const graphqlServer = new server_1.ApolloServer({
             typeDefs: `
     ${user_1.User.types}
+    ${tweet_1.Tweet.types}
 
     type Query {
         ${user_1.User.queries}
+        ${tweet_1.Tweet.queries}
+    }
+
+    type Mutation {
+      ${tweet_1.Tweet.mutations}
     }
 
     `,
-            resolvers: {
-                Query: Object.assign({}, user_1.User.resolvers.queries),
-            },
+            resolvers: Object.assign(Object.assign({ Query: Object.assign(Object.assign({}, user_1.User.resolvers.queries), tweet_1.Tweet.resolvers.queries), Mutation: Object.assign({}, tweet_1.Tweet.resolvers.mutations) }, tweet_1.Tweet.resolvers.extraResolver), user_1.User.resolvers.extraResolvers),
         });
         yield graphqlServer.start();
         app.use("/graphql", (0, express4_1.expressMiddleware)(graphqlServer, {
             context: ({ req, res }) => __awaiter(this, void 0, void 0, function* () {
                 return {
                     user: req.headers.authorization
-                        ? jwt_1.default.decodeToken(req.headers.authorization.split('Bearer ')[1])
+                        ? jwt_1.default.decodeToken(req.headers.authorization.split("Bearer ")[1])
                         : undefined,
                 };
             }),
