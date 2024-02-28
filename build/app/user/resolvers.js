@@ -13,39 +13,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.resolvers = void 0;
-const axios_1 = __importDefault(require("axios"));
 const db_1 = require("../../clients/db");
-const jwt_1 = __importDefault(require("../../services/jwt"));
+const user_1 = __importDefault(require("../../services/user"));
 const queries = {
     verifyGoogleToken: (parent, { token }) => __awaiter(void 0, void 0, void 0, function* () {
-        const googleToken = token;
-        const googleOauthURL = new URL("https://oauth2.googleapis.com/tokeninfo");
-        googleOauthURL.searchParams.set("id_token", googleToken);
-        const { data } = yield axios_1.default.get(googleOauthURL.toString(), {
-            responseType: "json",
-        });
-        const user = yield db_1.prismaClient.user.findUnique({
-            where: { email: data.email },
-        });
-        console.log("let's check this", user === null || user === void 0 ? void 0 : user.email);
-        if (!user) {
-            yield db_1.prismaClient.user.create({
-                data: {
-                    email: data.email,
-                    firstName: data.given_name,
-                    lastName: data.family_name,
-                    profileImageURL: data.picture,
-                },
-            });
-        }
-        const userIndb = yield db_1.prismaClient.user.findUnique({
-            where: { email: data.email },
-        });
-        if (!userIndb)
-            throw new Error("User with email not found");
-        const userToken = jwt_1.default.generateTokenForUser(userIndb);
-        return userToken;
-        // return "ok";
+        const resultToken = user_1.default.verifyGoogleAuthToken(token);
+        return resultToken;
     }),
     getCurrentUser: (parent, args, ctx) => __awaiter(void 0, void 0, void 0, function* () {
         var _a;
@@ -53,14 +26,72 @@ const queries = {
         const id = (_a = ctx.user) === null || _a === void 0 ? void 0 : _a.id;
         if (!id)
             return null;
-        const user = yield db_1.prismaClient.user.findUnique({ where: { id } });
+        const user = user_1.default.getUserById(id);
         return user;
     }),
-    getUserById: (parent, { id }, ctx) => __awaiter(void 0, void 0, void 0, function* () { return db_1.prismaClient.user.findUnique({ where: { id } }); }),
+    getUserById: (parent, { id }, ctx) => __awaiter(void 0, void 0, void 0, function* () { return user_1.default.getUserById(id); }),
 };
 const extraResolvers = {
     User: {
         tweets: (parent) => db_1.prismaClient.tweet.findMany({ where: { author: { id: parent.id } } }),
+        followers: (parent) => __awaiter(void 0, void 0, void 0, function* () {
+            const result = yield db_1.prismaClient.follows.findMany({
+                where: { following: { id: parent.id } },
+                include: {
+                    follower: true,
+                },
+            });
+            return result.map((el) => el.follower);
+        }),
+        following: (parent) => __awaiter(void 0, void 0, void 0, function* () {
+            const result = yield db_1.prismaClient.follows.findMany({
+                where: { follower: { id: parent.id } },
+                include: {
+                    following: true,
+                },
+            });
+            // console.log("Result!! is == ",result)
+            return result.map((el) => el.following);
+        }),
+        recommendedUsers: (parent, _, ctx) => __awaiter(void 0, void 0, void 0, function* () {
+            if (!ctx.user)
+                return [];
+            const myFollowings = yield db_1.prismaClient.follows.findMany({
+                where: {
+                    follower: { id: ctx.user.id },
+                },
+                include: {
+                    following: {
+                        include: { followers: { include: { following: true } } },
+                    },
+                },
+            });
+            const user = [];
+            // console.log("my following = ", myFollowings);
+            for (const followings of myFollowings) {
+                for (const followingOfFollowedUser of followings.following.followers) {
+                    if (followingOfFollowedUser.followingId !== ctx.user.id &&
+                        myFollowings.findIndex((e) => e.followingId === followingOfFollowedUser.following.id) < 0) {
+                        user.push(followingOfFollowedUser.following);
+                    }
+                }
+            }
+            return user;
+        }),
     },
 };
-exports.resolvers = { queries, extraResolvers };
+const mutations = {
+    followUser: (parent, { to }, ctx) => __awaiter(void 0, void 0, void 0, function* () {
+        if (!ctx.user || !ctx.user.id)
+            throw new Error("Unauthenticated");
+        yield user_1.default.followUser(ctx.user.id, to);
+        return true;
+    }),
+    unfollowUser: (parent, { to }, ctx) => __awaiter(void 0, void 0, void 0, function* () {
+        if (!ctx.user || !ctx.user.id)
+            throw new Error("Unauthenticated");
+        yield user_1.default.unfollowUser(ctx.user.id, to);
+        return true;
+    }),
+};
+exports.resolvers = { queries, extraResolvers, mutations };
