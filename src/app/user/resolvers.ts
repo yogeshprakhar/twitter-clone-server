@@ -5,6 +5,7 @@ import { GraphqlContext } from "../../interface";
 import { User } from "@prisma/client";
 import UserService from "../../services/user";
 import { PrismaClientValidationError } from "@prisma/client/runtime/library";
+import { redisClient } from "../../clients/redis";
 
 const queries = {
   verifyGoogleToken: async (parent: any, { token }: { token: string }) => {
@@ -53,6 +54,13 @@ const extraResolvers = {
     },
     recommendedUsers: async (parent: User, _: any, ctx: GraphqlContext) => {
       if (!ctx.user) return [];
+
+      const cachedValue = await redisClient.get(
+        `RECOMMENDED_USERS:${ctx.user.id}`
+      );
+
+      if (cachedValue) return JSON.parse(cachedValue);
+
       const myFollowings = await prismaClient.follows.findMany({
         where: {
           follower: { id: ctx.user.id },
@@ -63,7 +71,7 @@ const extraResolvers = {
           },
         },
       });
-      const user: User[] = [];
+      const users: User[] = [];
       // console.log("my following = ", myFollowings);
       for (const followings of myFollowings) {
         for (const followingOfFollowedUser of followings.following.followers) {
@@ -73,11 +81,17 @@ const extraResolvers = {
               (e) => e.followingId === followingOfFollowedUser.following.id
             ) < 0
           ) {
-            user.push(followingOfFollowedUser.following);
+            users.push(followingOfFollowedUser.following);
           }
         }
       }
-      return user;
+
+      await redisClient.set(
+        `RECOMMENDED_USERS:${ctx.user.id}`,
+        JSON.stringify(users)
+      );
+
+      return users;
     },
   },
 };
@@ -90,6 +104,7 @@ const mutations = {
   ) => {
     if (!ctx.user || !ctx.user.id) throw new Error("Unauthenticated");
     await UserService.followUser(ctx.user.id, to);
+    await redisClient.del(`RECOMMENDED_USERS:${ctx.user.id}`);
     return true;
   },
 
@@ -100,6 +115,7 @@ const mutations = {
   ) => {
     if (!ctx.user || !ctx.user.id) throw new Error("Unauthenticated");
     await UserService.unfollowUser(ctx.user.id, to);
+    await redisClient.del(`RECOMMENDED_USERS:${ctx.user.id}`);
     return true;
   },
 };
